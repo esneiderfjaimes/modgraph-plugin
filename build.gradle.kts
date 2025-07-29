@@ -17,7 +17,7 @@ gradlePlugin {
     plugins {
         create("modgraphPlugin") {
             id = "io.github.esneiderfjaimes.modgraph"
-            implementationClass = "io.github.esneiderfjaimes.modgraph.ModgraphPlugin"
+            implementationClass = "io.github.esneiderfjaimes.modgraph.ModGraphPlugin"
             displayName = "ModGraph - Visualize Module Dependencies"
             description =
                 "A Gradle plugin for generating visual diagrams of module dependencies using pluggable rendering backends."
