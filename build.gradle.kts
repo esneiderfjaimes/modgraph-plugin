@@ -25,11 +25,8 @@ gradlePlugin {
                 "graph",
                 "dependencies",
                 "modules",
-                "gradle",
                 "visualization",
-                "architecture",
-                "mermaid",
-                "dot"
+                "architecture"
             )
         }
     }
