@@ -1,8 +1,13 @@
 package io.github.esneiderfjaimes.modgraph
 
-import io.github.esneiderfjaimes.modgraph.utils.id
-import io.github.esneiderfjaimes.modgraph.utils.id2
+import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
+import io.github.esneiderfjaimes.modgraph.core.Module
+import io.github.esneiderfjaimes.modgraph.core.ProjectProvider
+import io.github.esneiderfjaimes.modgraph.core.SHOW_DANGER_LOG
+import io.github.esneiderfjaimes.modgraph.core.SHOW_LOG
+import io.github.esneiderfjaimes.modgraph.core.normalizeId
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.file.DirectoryProperty
@@ -20,7 +25,7 @@ import javax.inject.Inject
 abstract class GenerateModGraphTask @Inject constructor(
     private val execOps: ExecOperations,
     objects: ObjectFactory
-) : DefaultTask() {
+) : DefaultTask(), ProjectProvider {
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
@@ -29,6 +34,8 @@ abstract class GenerateModGraphTask @Inject constructor(
     @get:Input
     abstract val provider: Property<String>
 
+    private val graphGenerator = GraphGenerator(this)
+
     @TaskAction
     fun generateSvgFiles() {
         val graphTypeName = provider.get()
@@ -36,7 +43,7 @@ abstract class GenerateModGraphTask @Inject constructor(
 
         // println("[OK] Generating ${graphProvider.extension} files")
 
-        createGraph(project.rootProject, graphProvider)
+        generateGraphs(graphProvider)
         val outputDirFile = outputDir.get().asFile
         if (!outputDirFile.exists()) outputDirFile.mkdirs()
 
@@ -81,12 +88,8 @@ abstract class GenerateModGraphTask @Inject constructor(
         }
     }
 
-    fun createGraph(project: Project, provider: GraphProvider) {
+    fun generateGraphs(provider: GraphProvider) {
         try {
-            val builder = when (provider) {
-                GraphProvider.MERMAID -> MermaidBuilder()
-                GraphProvider.GRAPHVIZ -> GraphvizBuilder()
-            }
             val outputDir: File =
                 project.rootProject.file("docs/graphs/temp-${provider.extension}")
             if (outputDir.exists()) {
@@ -99,15 +102,16 @@ abstract class GenerateModGraphTask @Inject constructor(
                 try {
                     // tree(subproject, { project.rootProject.subprojectByPath(it) })
 
-                    val content = builder.create(subproject)
-                    val outputDot = File(outputDir, "${subproject.id2}.${provider.extension}")
+                    val path = subproject.path.normalizeId()
+                    val content = graphGenerator.generate(subproject.path, provider)
+                    val outputDot = File(outputDir, "${path}.${provider.extension}")
                     outputDot.writeText(content)
 
-                    files.add(subproject.id2)
+                    files.add(path)
 
                     // println("[OK] file written to ${outputDot.absolutePath}")
                 } catch (e: Exception) {
-                    println("[!] ${subproject.id2} ${e.message}")
+                    println("[!] ${subproject.path} ${e.message}")
                 }
             }
         } catch (e: Exception) {
@@ -115,342 +119,69 @@ abstract class GenerateModGraphTask @Inject constructor(
         }
     }
 
-    fun Project.subprojectByPath(path: String): Project? {
-        return rootProject.subprojects.find { it.path == path }
+    override fun getModuleByPath(path: String): Module {
+        return moduleByPath(path)
     }
 
-    fun test(project: Project) {
-        project.rootProject.subprojects.forEach { subproject ->
-            println("Module: ${subproject.id}")
-            val dependencies = mutableSetOf<String>()
+    private val _subprojectDir = mutableMapOf<String, Project>()
 
-            subproject.configurations.forEach { config ->
-                config.dependencies.forEach { dep ->
-                    if (dep is ProjectDependency) {
-                        dependencies.add(dep.path)
-                    }
-                }
-            }
-
-            if (dependencies.isEmpty()) {
-                println("  [!] No module dependencies.")
-            } else {
-                dependencies.forEach { path ->
-                    println("${subproject.path}  -> $path")
-                }
-            }
-            println()
+    fun subprojectByPath(path: String): Project {
+        return _subprojectDir.getOrPut(path) {
+            project.rootProject.subprojects.find { it.path == path }
+                ?: throw GradleException("Could not find $path")
         }
     }
 
-    interface SchemaBuilder {
-        fun create(project: Project): String
-    }
+    private val _directDependenciesDir = mutableMapOf<String, Set<String>>()
 
-    inner class MermaidBuilder : SchemaBuilder {
-        override fun create(project: Project) = buildString {
-            val tree = dependencePaths(project, { project.subprojectByPath(it) })
-            val map = pathsToMap(tree)
-            append(
-                "%%{ init: { 'flowchart': { 'curve': 'basis' } } }%%" +
-                        "\ngraph TD"
-            )
-            graph("", map)
-            links(project.rootProject.subprojects)
-        }
-
-        private fun StringBuilder.graph(key: String, any: Any, level: Int = 0) {
-            when (any) {
-                is String -> {
-                    append("\n")
-                    append("\t".repeat(level))
-                    append(any.replace(":", "_"))
-                    append("_id")
-                    append("(")
-                    append(any)
-                    append(")")
-                }
-
-                is Map<*, *> -> {
-                    if (key.isNotEmpty()) {
-                        append("\n")
-                        append("\t".repeat(level))
-                        append("subgraph $key")
-                    }
-                    @Suppress("UNCHECKED_CAST")
-                    val map = any as Map<String, Any>
-                    map.forEach { (key, value) ->
-                        graph(key, value, level + 1)
-                    }
-                    if (key.isNotEmpty()) {
-                        append("\n")
-                        append("end")
-                    }
-                }
+    fun directDependenciesByPath(project: Project): Set<String> {
+        val key = project.path
+        val fromCache = _directDependenciesDir[key]
+        if (fromCache != null) {
+            if (SHOW_DANGER_LOG) {
+                println("[directDependenciesByPath] Using cache for $key")
             }
+            return fromCache
         }
-
-        private fun StringBuilder.links(subprojects: Collection<Project>) {
-            subprojects.forEach { subproject ->
-                val dependencies = mutableSetOf<String>()
-
-                subproject.configurations.forEach { config ->
-                    config.dependencies.forEach { dep ->
-                        if (dep is ProjectDependency) {
-                            dependencies.add(dep.path)
-                        }
-                    }
-                }
-
-                if (dependencies.isNotEmpty()) {
-                    dependencies.forEach { path ->
-                        if (path == subproject.path) {
-                            return@forEach
-                        }
-                        append("\n")
-                        append("\t".repeat(1))
-                        append(subproject.path.replace(":", "_"))
-                        append("_id")
-                        append(" --> ")
-                        append(path.replace(":", "_"))
-                        append("_id")
-                    }
-                }
-            }
-        }
-    }
-
-    inner class GraphvizBuilder : SchemaBuilder {
-        override fun create(project: Project): String {
-            return buildString {
-                val tree = dependencePaths(project, { project.subprojectByPath(it) })
-                val map = pathsToMap(tree)
-                append(
-                    """digraph unix {
-    rankdir=TB; // top to bottom
-	fontname="Helvetica,Arial,sans-serif"
-	node [fontname="Helvetica,Arial,sans-serif"]
-	edge [fontname="Helvetica,Arial,sans-serif"]
-	node [color=lightblue2, style=filled];
-"""
-                )
-                if (map.isEmpty()) {
-                    throw IllegalStateException("Empty map")
-                }
-                graph("", map)
-                append("\n")
-                links(project, subprojectProvider = { project.subprojectByPath(it) })
-                append("\n}")
-            }
-        }
-
-        private fun StringBuilder.graph(key: String, any: Any, level: Int = 0) {
-            when (any) {
-                is String -> {
-                    append("\n")
-                    append("\t".repeat(level))
-                    append(any.replace(":", "_"))
-                    append("_id")
-                    append(" [label=\"")
-                    append(any)
-                    append("\"];")
-                }
-
-                is Map<*, *> -> {
-                    if (key.isNotEmpty()) {
-                        append("\n")
-                        append("\n")
-                        append("\t".repeat(level))
-                        append("subgraph cluster_$key {")
-                        append("\n")
-                        append("\t".repeat(level + 1))
-                        append("label = \"")
-                        append(key)
-                        append("\";")
-                        append("\n")
-                        append("\t".repeat(level + 1))
-                        append("color = lightgrey;")
-                        append("\n")
-                        append("\t".repeat(level + 1))
-                        append("style = dashed;")
-                        append("\n")
-                    }
-                    @Suppress("UNCHECKED_CAST")
-                    val map = any as Map<String, Any>
-                    map.forEach { (key, value) ->
-                        graph(key, value, level + 1)
-                    }
-                    if (key.isNotEmpty()) {
-                        append("\n")
-                        append("\t".repeat(level))
-                        append("}")
-                    }
-                }
-            }
-        }
-
-        /*        private fun StringBuilder.links(subprojects: Collection<Project>) {
-                    subprojects.forEach { subproject ->
-                        val dependencies = mutableSetOf<String>()
-
-                        subproject.configurations.forEach { config ->
-                            config.dependencies.forEach { dep ->
-                                if (dep is ProjectDependency) {
-                                    dependencies.add(dep.id)
-                                }
-                            }
-                        }
-
-                        if (dependencies.isNotEmpty()) {
-                            dependencies.forEach { path ->
-                                if (path == subproject.id) {
-                                    return@forEach
-                                }
-                                append("\n")
-                                append("\t".repeat(1))
-                                append(subproject.id.replace(":", "_"))
-                                append("_id")
-                                append(" -> ")
-                                append(path.replace(":", "_"))
-                                append("_id")
-                                append(";")
-                            }
-                        }
-                    }
-                }
-
-                private fun StringBuilder.links(subproject: Project) {
-                    val dependencies = mutableSetOf<String>()
-
-                    subproject.configurations.forEach { config ->
-                        config.dependencies.forEach { dep ->
-                            if (dep is ProjectDependency) {
-                                dependencies.add(dep.id)
-                            }
-                        }
-                    }
-
-                    if (dependencies.isNotEmpty()) {
-                        dependencies.forEach { path ->
-                            if (path == subproject.id) {
-                                return@forEach
-                            }
-                            append("\n")
-                            append("\t".repeat(1))
-                            append(subproject.id.replace(":", "_"))
-                            append("_id")
-                            append(" -> ")
-                            append(path.replace(":", "_"))
-                            append("_id")
-                            append(";")
-                        }
-                    }
-                }*/
-
-        fun StringBuilder.links(project: Project, subprojectProvider: (String) -> Project?) {
-            val dependencies = mutableSetOf<String>()
-            project.configurations.forEach { config ->
-                config.dependencies.forEach { dep ->
-                    if (dep is ProjectDependency) {
-                        dependencies.add(dep.id)
-                    }
-                }
-            }
-
-            if (dependencies.isNotEmpty()) {
-                dependencies.forEach { path ->
-                    if (path == project.id) {
-                        return@forEach
-                    }
-                    append("\n")
-                    append("\t".repeat(1))
-                    append(project.id.replace(":", "_"))
-                    append("_id")
-                    append(" -> ")
-                    append(path.replace(":", "_"))
-                    append("_id")
-                    append(";")
-                    val subproject = subprojectProvider(path) ?: error("Could not find $path")
-                    links(subproject, subprojectProvider)
-                }
-            }
-        }
-    }
-
-    fun tree(project: Project, subprojectProvider: (String) -> Project?, level: Int = 0) {
-        println("${"\t".repeat(level)}${project.path}")
-
         val dependencies = mutableSetOf<String>()
         project.configurations.forEach { config ->
-            config.dependencies.forEach { dep ->
+            config.dependencies.forEach dependencies@ { dep ->
                 if (dep is ProjectDependency) {
-                    dependencies.add(dep.id)
+                    // skip self
+                    if (key == dep.path) {
+                        return@dependencies
+                    }
+
+                    dependencies.add(dep.path)
                 }
             }
         }
-
-        if (dependencies.isNotEmpty()) {
-            dependencies.forEach { path ->
-                if (path == project.id) {
-                    return@forEach
-                }
-
-                val subproject = subprojectProvider(path) ?: error("Could not find $path")
-                tree(subproject, subprojectProvider, level + 1)
-            }
+        if (SHOW_LOG) {
+            println("[directDependenciesByPath] $key -> $dependencies")
         }
-    }
-
-    fun dependencePaths(
-        project: Project,
-        subprojectProvider: (String) -> Project?,
-        level: Int = 0
-    ): MutableSet<String> {
-        val dependencies = mutableSetOf<String>()
-        project.configurations.forEach { config ->
-            config.dependencies.forEach { dep ->
-                if (dep is ProjectDependency) {
-                    dependencies.add(dep.id)
-                }
-            }
-        }
-
-        val newTree = mutableSetOf<String>()
-        if (dependencies.isNotEmpty()) {
-            dependencies.forEach { path ->
-                if (path == project.id) {
-                    return@forEach
-                }
-
-                val subproject = subprojectProvider(path) ?: error("Could not find $path")
-                newTree += dependencePaths(subproject, subprojectProvider, level + 1)
-            }
-        }
-
-        dependencies.addAll(newTree)
-
+        _directDependenciesDir[key] = dependencies
         return dependencies
     }
 
-    fun pathsToMap(paths: Collection<String>): MutableMap<String, Any> {
-        val tree = mutableMapOf<String, Any>()
-        paths.forEach { path ->
-            val parts = path.split(":")
-            var current = tree
-            parts.forEachIndexed { index, part ->
-                if (part.isEmpty()) {
-                    return@forEachIndexed
-                }
+    private val _modules = mutableMapOf<String, Module>()
 
-                if (index == parts.size - 1) {
-                    current[part] = path
-                } else {
-                    @Suppress("UNCHECKED_CAST")
-                    current =
-                        current.getOrPut(part) { mutableMapOf<String, Any>() } as MutableMap<String, Any>
-                }
-            }
+    private fun moduleByPath(
+        path: String,
+        visited: MutableSet<String> = mutableSetOf()
+    ): Module {
+        _modules[path]?.let { return it }
+
+        if (!visited.add(path)) {
+            return Module(path, emptyList())
         }
-        return tree
+
+        val subproject = subprojectByPath(path)
+        val deps = directDependenciesByPath(subproject).map { depPath ->
+            moduleByPath(depPath, visited)
+        }
+
+        val module = Module(path, deps)
+        _modules[path] = module
+        return module
     }
 }
