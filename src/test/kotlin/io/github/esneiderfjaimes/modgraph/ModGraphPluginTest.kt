@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.io.File
+import kotlin.random.Random
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -67,17 +68,51 @@ class ModGraphPluginTest {
         val result = GradleRunner.create()
             .withProjectDir(testProjectDir)
             .withPluginClasspath()
-            .withArguments("generateModuleDependencyGraph", "--provider=graphviz", "--stacktrace")
+            .withArguments("generateModuleDependencyGraph", "--stacktrace")
             .forwardOutput()
             .build()
 
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateModuleDependencyGraph")?.outcome)
 
         val graphsDir = File(testProjectDir, "docs/graphs")
-        assertTrue(graphsDir.exists(), "Expected docs/graphs directory to exist")
+        assertTrue(
+            graphsDir.exists(),
+            "Expected docs/graphs directory to exist, ${graphsDir.absolutePath}"
+        )
 
         val svgFiles = graphsDir.listFiles { _, name -> name.endsWith(".svg") } ?: emptyArray()
         assertTrue(svgFiles.isNotEmpty(), "Expected at least one .svg file in docs/graphs")
+
+        val svgContent = svgFiles.first().readText()
+        assertTrue(svgContent.contains("<svg"), "Expected SVG content")
+    }
+
+    @Test
+    fun `should generate svg file with module dependencies custom output`() {
+        val randomNumber = Random.nextInt(1000)
+        val graphsDir = File(testProjectDir, "graphs-${randomNumber}")
+
+        val result = GradleRunner.create()
+            .withProjectDir(testProjectDir)
+            .withPluginClasspath()
+            .withArguments(
+                "generateModuleDependencyGraph",
+                "--output",
+                graphsDir.absolutePath,
+                "--stacktrace"
+            )
+            .forwardOutput()
+            .build()
+
+        assertEquals(TaskOutcome.SUCCESS, result.task(":generateModuleDependencyGraph")?.outcome)
+
+        assertTrue(
+            graphsDir.exists(),
+            "Expected random directory to exist, ${graphsDir.absolutePath}"
+        )
+
+        val svgFiles = graphsDir.listFiles { _, name -> name.endsWith(".svg") } ?: emptyArray()
+        assertTrue(svgFiles.isNotEmpty(), "Expected at least one .svg file in random directory")
 
         val svgContent = svgFiles.first().readText()
         assertTrue(svgContent.contains("<svg"), "Expected SVG content")
