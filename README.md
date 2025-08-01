@@ -2,8 +2,7 @@
 
 [![Gradle Plugin Portal Version](https://img.shields.io/gradle-plugin-portal/v/io.github.esneiderfjaimes.modgraph?color=%2302303a)](https://plugins.gradle.org/plugin/io.github.esneiderfjaimes.modgraph)
 
-A Gradle plugin that generates visual diagrams of module dependencies in multi-module projects.  
-Currently supports output via the Graphviz `dot` command. Future support for other providers like Mermaid is planned.
+A Gradle plugin that generates visual diagrams of module dependencies in multi-module projects.
 
 ---
 
@@ -11,7 +10,7 @@ Currently supports output via the Graphviz `dot` command. Future support for oth
 
 ```kotlin
 plugins {
-    id("io.github.esneiderfjaimes.modgraph") version "0.0.1"
+    id("io.github.esneiderfjaimes.modgraph") version "<version>"
 }
 ```
 
@@ -21,8 +20,7 @@ plugins {
 
 * Detects dependencies between modules in your Gradle project.
 * Generates a diagram (SVG) of the module dependency graph.
-* Saves the output to the `docs/graphs/` directory.
-* Currently, requires a provider to be specified (e.g., `graphviz`).
+* Saves the output to the `docs/graphs/` directory by default.
 
 ---
 
@@ -48,21 +46,26 @@ your-project/
 ### 1. Run the Graph Generator
 
 ```bash
-./gradlew generateModuleDependencyGraph --provider=graphviz
+./gradlew generateModuleDependencyGraph
 ```
 
-This will scan your modules and generate an SVG diagram at `docs/graphs/`.
+You can optionally specify parameters:
+
+```bash
+./gradlew generateModuleDependencyGraph \
+  --output=custom/output/path \
+  --module=:app
+```
 
 ---
 
-### 2. Configuration (via Extension – optional for future versions)
+### 2. Configuration via Extension
 
-The plugin includes a `modGraph` extension for future configuration, such as customizing the output directory.
+Instead of passing CLI arguments, you can configure the plugin using the `modGraph` extension in your root `build.gradle.kts`:
 
 ```kotlin
 modGraph {
-    // Example (not yet implemented)
-    // output.set(file("custom/path"))
+    outputDirPath.set("${rootDir}/custom/output")
 }
 ```
 
@@ -76,20 +79,31 @@ modGraph {
 
 ---
 
+## 🔧 Task Options
+
+| Option     | Type   | Required | Description                                |
+|------------|--------|----------|--------------------------------------------|
+| `--output` | String | ❌        | Output directory (default: `docs/graphs/`) |
+
+---
+
 ## 💡 Notes
 
-* The `--provider` flag is required. The only supported value for now is:
-    - `graphviz`: Requires [Graphviz](https://graphviz.org/) installed and accessible via the `dot` command in your terminal.
+* Only project-to-project dependencies are shown (e.g., `implementation(project(":core"))`).
+* If the output directory doesn't exist, it will be created automatically.
+* You can define options either via CLI flags or the extension (`modGraph`), with extension values taking precedence.
 
-* Output is always saved to `docs/graphs/`.
-* Only project module dependencies are considered (e.g., `implementation(project(":core"))`).
+---
+
+## 🙌 Credits
+
+SVG generation is powered by the excellent [Graphviz Java library by nidi3](https://github.com/nidi3/graphviz-java).
 
 ---
 
 ## 🔜 Planned Features
 
 * Support for Mermaid diagrams.
-* Configurable output path.
-* Additional output formats (e.g., `.dot`, `.md`, etc.).
+* Additional output formats (`.dot`, `.md`, etc.).
 
 ---

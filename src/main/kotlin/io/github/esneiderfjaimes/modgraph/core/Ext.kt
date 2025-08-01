@@ -1,8 +1,7 @@
 package io.github.esneiderfjaimes.modgraph.core
 
 fun String.normalizeId(): String {
-    return replace(":", "_").replace("-", "_").removePrefix("_")
+    return removePrefix(":")
+        .replace(":", "__")
+        .replace("-", "___")
 }
-
-const val SHOW_LOG = false
-const val SHOW_DANGER_LOG = false

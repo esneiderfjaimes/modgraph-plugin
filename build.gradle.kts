@@ -5,10 +5,14 @@ plugins {
 }
 
 group = "io.github.esneiderfjaimes"
-version = "0.0.2"
+version = "0.0.3"
 
 repositories {
     mavenCentral()
+}
+
+dependencies {
+    implementation("guru.nidi:graphviz-java:0.18.1")
 }
 
 gradlePlugin {

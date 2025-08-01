@@ -1,20 +1,19 @@
 package io.github.esneiderfjaimes.modgraph
 
+import guru.nidi.graphviz.engine.Format
+import guru.nidi.graphviz.engine.Graphviz
 import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
 import io.github.esneiderfjaimes.modgraph.core.Module
 import io.github.esneiderfjaimes.modgraph.core.ProjectProvider
-import io.github.esneiderfjaimes.modgraph.core.SHOW_DANGER_LOG
-import io.github.esneiderfjaimes.modgraph.core.SHOW_LOG
 import io.github.esneiderfjaimes.modgraph.core.normalizeId
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
-import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.options.Option
 import org.gradle.process.ExecOperations
@@ -27,22 +26,45 @@ abstract class GenerateModGraphTask @Inject constructor(
     objects: ObjectFactory
 ) : DefaultTask(), ProjectProvider {
 
-    @get:OutputDirectory
-    abstract val outputDir: DirectoryProperty
-
-    @get:Option(option = "provider", description = "graph svg provider")
+    @get:Option(option = "output", description = "Output directory")
     @get:Input
-    abstract val provider: Property<String>
+    abstract val outputDirPath: Property<String>
+
+    @get:Option(option = "module", description = "Optional module name")
+    @get:Input
+    @get:Optional
+    abstract val moduleName: Property<String>
+
+    init {
+        val ext = project.extensions.findByType(ModGraphExtension::class.java)
+        outputDirPath.convention(
+            // provided by extension
+            ext?.outputDirPath?.orNull
+            // default
+                ?: File(project.rootProject.projectDir, "docs/graphs").absolutePath
+        )
+
+        moduleName.convention(null as String?)
+    }
+
+    // resolve output dir
+    private val resolvedOutputDir: File
+        get() {
+            val rawPath = outputDirPath.get()
+            val file = File(rawPath)
+            return if (file.isAbsolute) file else File(project.rootProject.projectDir, rawPath)
+        }
 
     private val graphGenerator = GraphGenerator(this)
 
     @TaskAction
     fun generateSvgFiles() {
-        val graphTypeName = provider.get()
-        val graphProvider = GraphProvider.fromString(graphTypeName)
+        /*       val graphTypeName = provider.get()
+               val graphProvider = GraphProvider.fromString(graphTypeName)*/
 
-        // println("[OK] Generating ${graphProvider.extension} files")
+        generateNidiGraphs()
 
+        /*
         generateGraphs(graphProvider)
         val outputDirFile = outputDir.get().asFile
         if (!outputDirFile.exists()) outputDirFile.mkdirs()
@@ -75,6 +97,7 @@ abstract class GenerateModGraphTask @Inject constructor(
         if (inputDirFile.exists()) {
             inputDirFile.deleteRecursively()
         }
+        */
     }
 
     enum class GraphProvider(val extension: String) {
@@ -119,6 +142,57 @@ abstract class GenerateModGraphTask @Inject constructor(
         }
     }
 
+    fun generateNidiGraphs() {
+        try {
+            val outputDir: File = resolvedOutputDir
+            outputDir.mkdirs()
+
+            val moduleName = moduleName.orNull
+
+            // target module name is not provided
+            if (moduleName != null) {
+                require(moduleName.startsWith(":")) {
+                    "Invalid module path '${moduleName}'. It must start with ':' (e.g. :app, :lib-core)"
+                }
+
+                val project = subprojectByPath(moduleName)
+                generateModuleDependencyGraph(project, outputDir)
+            } else {
+                // Project is root project
+                if (project == project.rootProject) {
+                    // generate all module dependency graph
+                    project.rootProject.subprojects.forEach { subproject ->
+                        generateModuleDependencyGraph(subproject, outputDir)
+                    }
+                    return
+                }
+
+                // Project is not root project
+                generateModuleDependencyGraph(project, outputDir)
+            }
+        } catch (e: Exception) {
+            logger.error("[modgraph] export failed.", e)
+        }
+    }
+
+    private fun generateModuleDependencyGraph(project: Project, outputDir: File) {
+        try {
+            // tree(subproject, { project.rootProject.subprojectByPath(it) })
+
+            val path = project.path.normalizeId()
+            val content = graphGenerator.generate(project.path, GraphProvider.GRAPHVIZ)
+
+            val file = File(outputDir, "${path}.svg")
+            Graphviz.fromString(content)
+                .render(Format.SVG)
+                .toFile(file)
+
+            logger.lifecycle("[modgraph] module $path exported to ${file.absolutePath}.")
+        } catch (e: Exception) {
+            logger.error("[modgraph] module ${project.path} export failed.", e)
+        }
+    }
+
     override fun getModuleByPath(path: String): Module {
         return moduleByPath(path)
     }
@@ -128,7 +202,10 @@ abstract class GenerateModGraphTask @Inject constructor(
     fun subprojectByPath(path: String): Project {
         return _subprojectDir.getOrPut(path) {
             project.rootProject.subprojects.find { it.path == path }
-                ?: throw GradleException("Could not find $path")
+                ?: throw GradleException(
+                    "Could not find module '$path'. Available modules:\n" +
+                            project.rootProject.subprojects.joinToString("\n") { it.path }
+                )
         }
     }
 
@@ -138,14 +215,12 @@ abstract class GenerateModGraphTask @Inject constructor(
         val key = project.path
         val fromCache = _directDependenciesDir[key]
         if (fromCache != null) {
-            if (SHOW_DANGER_LOG) {
-                println("[directDependenciesByPath] Using cache for $key")
-            }
+            logger.debug("[directDependenciesByPath] Using cache for $key")
             return fromCache
         }
         val dependencies = mutableSetOf<String>()
         project.configurations.forEach { config ->
-            config.dependencies.forEach dependencies@ { dep ->
+            config.dependencies.forEach dependencies@{ dep ->
                 if (dep is ProjectDependency) {
                     // skip self
                     if (key == dep.path) {
@@ -156,9 +231,7 @@ abstract class GenerateModGraphTask @Inject constructor(
                 }
             }
         }
-        if (SHOW_LOG) {
-            println("[directDependenciesByPath] $key -> $dependencies")
-        }
+        logger.info("[directDependenciesByPath] {} -> {}", key, dependencies)
         _directDependenciesDir[key] = dependencies
         return dependencies
     }

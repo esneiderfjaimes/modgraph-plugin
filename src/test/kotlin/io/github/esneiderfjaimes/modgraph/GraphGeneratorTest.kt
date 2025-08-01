@@ -41,15 +41,15 @@ digraph unix {
 		color = lightgrey;
 		style = dashed;
 
-		core_data_id [label=":core:data"];
-		core_model_id [label=":core:model"];
-		core_api_id [label=":core:api"];
-		core_database_id [label=":core:database"];
+		core__data_id [label=":core:data"];
+		core__model_id [label=":core:model"];
+		core__api_id [label=":core:api"];
+		core__database_id [label=":core:database"];
 	}
 
-	app_id -> {core_data_id core_model_id core_api_id} [color=red];
-	core_data_id -> {core_api_id core_database_id core_model_id};
-	core_api_id -> {core_model_id};
+	app_id -> {core__data_id core__model_id core__api_id} [color=red];
+	core__data_id -> {core__api_id core__database_id core__model_id};
+	core__api_id -> {core__model_id};
 }""".trimIndent()
 
     val rawMERMAID = """
@@ -58,15 +58,15 @@ graph TD
 	app_id(:app)
 
 	subgraph core
-		core_data_id(:core:data)
-		core_model_id(:core:model)
-		core_api_id(:core:api)
-		core_database_id(:core:database)
+		core__data_id(:core:data)
+		core__model_id(:core:model)
+		core__api_id(:core:api)
+		core__database_id(:core:database)
 	end
 
-app_id --> core_data_id & core_model_id & core_api_id
-core_data_id --> core_api_id & core_database_id & core_model_id
-core_api_id --> core_model_id
+app_id --> core__data_id & core__model_id & core__api_id
+core__data_id --> core__api_id & core__database_id & core__model_id
+core__api_id --> core__model_id
 """.trimIndent()
     @Test
     fun `should content syntax graphviz`() {

@@ -1,5 +1,9 @@
 package io.github.esneiderfjaimes.modgraph
 
-open class ModGraphExtension {
+import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.Property
+import javax.inject.Inject
 
+abstract class ModGraphExtension @Inject constructor(objects: ObjectFactory) {
+    val outputDirPath: Property<String> = objects.property(String::class.java)
 }
