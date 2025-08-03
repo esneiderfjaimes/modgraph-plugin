@@ -6,4 +6,6 @@ import javax.inject.Inject
 
 abstract class ModGraphExtension @Inject constructor(objects: ObjectFactory) {
     val outputDirPath: Property<String> = objects.property(String::class.java)
+
+    val stylePath: Property<String> = objects.property(String::class.java)
 }

@@ -1,18 +1,19 @@
 package io.github.esneiderfjaimes.modgraph.core.providers
 
 import io.github.esneiderfjaimes.modgraph.core.Module
+import io.github.esneiderfjaimes.modgraph.core.Node
 import io.github.esneiderfjaimes.modgraph.core.normalizeId
 
 class MermaidBuilder : SchemaBuilder {
 
-    override fun create(module: Module, directory: Map<String, Any>) = buildString {
+    override fun create(module: Module, node: Node, style: String?) = buildString {
         append(
             """
 %%{ init: { 'flowchart': { 'curve': 'basis' } } }%%
 graph TD
     """.trimIndent()
         )
-        graph(directory)
+       // graph(directory)
         append("\n")
         links(module)
         // links(module.path, module.dependencies)

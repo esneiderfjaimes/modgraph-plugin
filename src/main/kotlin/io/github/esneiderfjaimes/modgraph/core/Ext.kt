@@ -5,3 +5,15 @@ fun String.normalizeId(): String {
         .replace(":", "__")
         .replace("-", "___")
 }
+
+fun StringBuilder.appendId(string: String) {
+    append("\"")
+    append(string)
+    append("\"")
+}
+
+fun String.normalizeId2(): String {
+    return buildString {
+        appendId(this@normalizeId2)
+    }
+}

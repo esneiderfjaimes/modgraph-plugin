@@ -27,12 +27,43 @@ class ModGraphPluginTest {
         """.trimIndent()
         )
 
+        // style.json
+        val styleFile = File(testProjectDir, "style.json")
+        styleFile.writeText(
+            """
+{
+  "graph": {
+    "fontname": "Helvetica,Arial,sans-serif"
+  },
+  "module": {
+    "shape": "box",
+    "style": "filled,rounded",
+    "fillcolor": "lightblue",
+    "fontname": "Helvetica,Arial,sans-serif"
+  },
+  "link": {
+    "color": "gray"
+  },
+  "targetModule": {
+    "color": "red"
+  },
+  "directLink": {
+    "color": "red"
+  }
+}
+        """.trimIndent()
+        )
+        val normalizedPath = styleFile.absolutePath.replace(File.separatorChar, '/')
+
         // build.gradle.kts del root (con el plugin aplicado)
         File(testProjectDir, "build.gradle.kts").writeText(
             """
-        plugins {
-            id("io.github.esneiderfjaimes.modgraph")
-        }
+plugins {
+    id("io.github.esneiderfjaimes.modgraph")
+}
+modGraph {
+   stylePath = "$normalizedPath"
+}
         """.trimIndent()
         )
 

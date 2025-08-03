@@ -13,6 +13,8 @@ repositories {
 
 dependencies {
     implementation("guru.nidi:graphviz-java:0.18.1")
+    implementation("guru.nidi:graphviz-java-all-j2v8:0.18.1")
+    implementation("org.json:json:20250517")
 }
 
 gradlePlugin {

@@ -9,6 +9,8 @@ import kotlin.test.assertEquals
 
 class GraphGeneratorTest {
 
+    val moduleCoreCore = Module(":core:core:uwu", listOf())
+    val moduleCore = Module(":test", listOf(moduleCoreCore))
     val moduleModel = Module(":core:model", listOf())
     val moduleDatabase = Module(":core:database", listOf())
     val moduleApi = Module(":core:api", listOf(moduleModel))
@@ -29,27 +31,25 @@ class GraphGeneratorTest {
     }
 
     val rawGRAPHVIZ = """
-digraph unix {
-    rankdir=TB;
-    fontname="Helvetica,Arial,sans-serif"
-    node [fontname="Helvetica,Arial,sans-serif", color=lightblue2, style=filled];
+digraph {
+	graph [color="lightgrey", style="dashed", fontname="Helvetica,Arial,sans-serif"];
+	node [fillcolor="lightblue", style="filled", fontname="Helvetica,Arial,sans-serif"];
 
-	app_id [label=":app"];
+	":app" [color="red"]
 
 	subgraph cluster_core {
-		label = "core";
-		color = lightgrey;
-		style = dashed;
+		label = "core"
+		tooltip = "core"
 
-		core__data_id [label=":core:data"];
-		core__model_id [label=":core:model"];
-		core__api_id [label=":core:api"];
-		core__database_id [label=":core:database"];
+		":core:data"
+		":core:model"
+		":core:api"
+		":core:database"
 	}
 
-	app_id -> {core__data_id core__model_id core__api_id} [color=red];
-	core__data_id -> {core__api_id core__database_id core__model_id};
-	core__api_id -> {core__model_id};
+	":app" -> {":core:data" ":core:model" ":core:api"} [color="red"]
+	":core:data" -> {":core:api" ":core:database" ":core:model"}
+	":core:api" -> {":core:model"}
 }""".trimIndent()
 
     val rawMERMAID = """
@@ -68,15 +68,38 @@ app_id --> core__data_id & core__model_id & core__api_id
 core__data_id --> core__api_id & core__database_id & core__model_id
 core__api_id --> core__model_id
 """.trimIndent()
+    val style = """
+{
+    "module": {
+        "fontname": "Helvetica,Arial,sans-serif",
+        "style": "filled",
+        "fillcolor": "lightblue"
+    },
+    "container": {
+        "fontname": "Helvetica,Arial,sans-serif",
+        "color" : "lightgrey",
+		"style" : "dashed"
+    },
+    "targetModule": {
+      "color": "red"
+    },
+    "directLink": {
+      "color": "red"
+    }
+}
+    """.trimIndent()
+
     @Test
     fun `should content syntax graphviz`() {
-        val create = GraphGenerator(projectProvider).generate(":app", GraphProvider.GRAPHVIZ)
+        val create = GraphGenerator(projectProvider)
+            .generate(":app", GraphProvider.GRAPHVIZ, style)
         assertEquals(rawGRAPHVIZ, create)
     }
 
     @Test
     fun `should content syntax mermaid`() {
-        val create = GraphGenerator(projectProvider).generate(":app", GraphProvider.MERMAID)
+        val create = GraphGenerator(projectProvider)
+            .generate(":app", GraphProvider.MERMAID, null)
         assertEquals(rawMERMAID, create)
     }
 }

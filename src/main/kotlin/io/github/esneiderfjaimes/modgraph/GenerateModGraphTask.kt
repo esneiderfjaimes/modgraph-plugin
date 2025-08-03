@@ -35,13 +35,24 @@ abstract class GenerateModGraphTask @Inject constructor(
     @get:Optional
     abstract val moduleName: Property<String>
 
+    @get:Option(option = "style", description = "Style file")
+    @get:Input
+    abstract val stylePath: Property<String>
+
+    private val extension: ModGraphExtension
+        get() = project.extensions.getByType(ModGraphExtension::class.java)
+
     init {
-        val ext = project.extensions.findByType(ModGraphExtension::class.java)
         outputDirPath.convention(
             // provided by extension
-            ext?.outputDirPath?.orNull
+            extension.outputDirPath.orNull
             // default
                 ?: File(project.rootProject.projectDir, "docs/graphs").absolutePath
+        )
+
+        stylePath.convention(
+            // provided by extension
+            extension.stylePath.orNull
         )
 
         moduleName.convention(null as String?)
@@ -126,7 +137,8 @@ abstract class GenerateModGraphTask @Inject constructor(
                     // tree(subproject, { project.rootProject.subprojectByPath(it) })
 
                     val path = subproject.path.normalizeId()
-                    val content = graphGenerator.generate(subproject.path, provider)
+                    val style = readStyleFile()
+                    val content = graphGenerator.generate(subproject.path, provider, style)
                     val outputDot = File(outputDir, "${path}.${provider.extension}")
                     outputDot.writeText(content)
 
@@ -175,19 +187,30 @@ abstract class GenerateModGraphTask @Inject constructor(
         }
     }
 
+    private fun readStyleFile(): String? {
+        val file = File(extension.stylePath.orNull ?: return null)
+        return file.readText()
+    }
+
     private fun generateModuleDependencyGraph(project: Project, outputDir: File) {
         try {
             // tree(subproject, { project.rootProject.subprojectByPath(it) })
 
             val path = project.path.normalizeId()
-            val content = graphGenerator.generate(project.path, GraphProvider.GRAPHVIZ)
+            val style = readStyleFile()
+            val content = graphGenerator.generate(
+                project.path,
+                GraphProvider.GRAPHVIZ,
+                style
+            )
 
             val file = File(outputDir, "${path}.svg")
             Graphviz.fromString(content)
                 .render(Format.SVG)
                 .toFile(file)
+            val normalizedPath = file.absolutePath.replace(File.separatorChar, '/')
 
-            logger.lifecycle("[modgraph] module $path exported to ${file.absolutePath}.")
+            logger.lifecycle("[modgraph] module $path exported to file:///${normalizedPath}.")
         } catch (e: Exception) {
             logger.error("[modgraph] module ${project.path} export failed.", e)
         }

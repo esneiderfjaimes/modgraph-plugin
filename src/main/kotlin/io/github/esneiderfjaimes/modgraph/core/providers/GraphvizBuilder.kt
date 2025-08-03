@@ -1,106 +1,94 @@
 package io.github.esneiderfjaimes.modgraph.core.providers
 
 import io.github.esneiderfjaimes.modgraph.core.Module
+import io.github.esneiderfjaimes.modgraph.core.Node
+import io.github.esneiderfjaimes.modgraph.core.StyleMap
+import io.github.esneiderfjaimes.modgraph.core.appendId
 import io.github.esneiderfjaimes.modgraph.core.normalizeId
+import io.github.esneiderfjaimes.modgraph.core.normalizeId2
+import org.json.JSONObject
 
 class GraphvizBuilder : SchemaBuilder {
 
-    override fun create(module: Module, directory: Map<String, Any>) = buildString {
-        append(
-            """digraph unix {
-    rankdir=TB;
-    fontname="Helvetica,Arial,sans-serif"
-    node [fontname="Helvetica,Arial,sans-serif", color=lightblue2, style=filled];
-"""
-        )
-        graph(directory)
+    override fun create(
+        module: Module,
+        node: Node,
+        style: String?
+    ) = buildString {
+        append("digraph {\n")
+        val moduleStyle = styleToMap(style)
+        style(moduleStyle)
+        graph(node, style = moduleStyle["targetModule"])
         append("\n")
-        //  links(module.path, module.dependencies)
-        links(module)
+        links(module, moduleStyle = moduleStyle)
         append("\n}")
     }
 
-    private fun StringBuilder.graph(any: Any, key: String = "", level: Int = 0) {
-        when (any) {
-            is String -> {
-                append("\n")
-                append("\t".repeat(level))
-                append(any.normalizeId())
-                append("_id")
-                append(" [label=\"")
-                append(any)
-                append("\"];")
-            }
-
-            is Map<*, *> -> {
-                if (key.isNotEmpty()) {
-                    append("\n")
-                    append("\n")
-                    append("\t".repeat(level))
-                    append("subgraph cluster_${key.normalizeId()} {")
-                    append("\n")
-                    append("\t".repeat(level + 1))
-                    append("label = \"")
-                    append(key)
-                    append("\";")
-                    append("\n")
-                    append("\t".repeat(level + 1))
-                    append("color = lightgrey;")
-                    append("\n")
-                    append("\t".repeat(level + 1))
-                    append("style = dashed;")
-                    append("\n")
-                }
-                @Suppress("UNCHECKED_CAST")
-                val map = any as Map<String, Any>
-                map.forEach { (key, value) ->
-                    graph(value, key, level + 1)
-                }
-                if (key.isNotEmpty()) {
-                    append("\n")
-                    append("\t".repeat(level))
-                    append("}")
-                }
-            }
+    fun StringBuilder.style(style: Map<String, String>) {
+        if (style.isEmpty()) {
+            return
+        }
+        SECTIONS_RELATIONSHIPS.forEach { (section, relationship) ->
+            val attributes = style[section] ?: return@forEach
+            appendLine("\t$relationship [$attributes];")
         }
     }
 
-    private fun StringBuilder.links(
-        path: String,
-        modules: List<Module>,
-        visited: MutableSet<String> = mutableSetOf(),
-        first: Boolean = true
+    private fun StringBuilder.graph(
+        node: Node,
+        style: String? = null,
+        key: String = "",
+        level: Int = 0
     ) {
-        if (visited.contains(path)) {
-            return
-        }
-        visited.add(path)
-        modules.forEach { module ->
+        val hasChildren = node.children.isNotEmpty()
+        if (hasChildren && key.isNotEmpty()) {
             append("\n")
-            append("\t")
+            append("\n")
+            append("\t".repeat(level))
+            append("subgraph cluster_${key.normalizeId()} {")
+            append("\n")
+            // label
+            append("\t".repeat(level + 1))
+            append("label = ")
+            appendId(key)
+            append("\n")
+            // tooltip
+            append("\t".repeat(level + 1))
+            append("tooltip = ")
+            appendId(key)
+            append("\n")
+        }
 
-            // module id 1
-            append(path.normalizeId())
-            append("_id")
-
-            // arrow
-            append(" -> ")
-
-            // module id 2
-            append(module.path.normalizeId())
-            append("_id")
-
-            if (first) {
-                append(" [color=red]")
+        node.path?.let { path ->
+            val level = if (hasChildren) level + 1 else level
+            append("\n")
+            append("\t".repeat(level))
+            appendId(path)
+            // style
+            if (node.isTarget) {
+                style?.let { append(" [$it]") }
             }
-            append(";")
+        }
 
-            links(module.path, module.dependencies, visited, false)
+        node.children.forEach { (key, value) ->
+            graph(
+                node = value,
+                style = style,
+                key = key,
+                level = level + 1
+            )
+        }
+
+        if (hasChildren && key.isNotEmpty()) {
+            append("\n")
+            append("\t".repeat(level))
+            append("}")
         }
     }
 
     private fun StringBuilder.links(
         module: Module,
+        moduleStyle: Map<String, String>? = null,
         visited: MutableSet<String> = mutableSetOf(),
         first: Boolean = true
     ) {
@@ -117,25 +105,66 @@ class GraphvizBuilder : SchemaBuilder {
         append("\t")
 
         // module id 1
-        append(module.path.normalizeId())
-        append("_id")
+        appendId(module.path)
 
         // arrow
         append(" -> ")
         append("{")
 
-        val dependencies = module.dependencies.joinToString(" ") { it.path.normalizeId() + "_id" }
+        val dependencies = module.dependencies.joinToString(" ") { it.path.normalizeId2() }
         append(dependencies)
 
         append("}")
 
         if (first) {
-            append(" [color=red]")
+            val directLink = moduleStyle?.get("directLink")
+            if (directLink != null) {
+                append(" [${directLink}]")
+            }
         }
-        append(";")
 
         module.dependencies.forEach { submodule ->
-            links(submodule, visited, false)
+            links(
+                module = submodule,
+                moduleStyle = null,
+                visited = visited,
+                first = false
+            )
         }
+    }
+
+    fun styleToMap(json: String?): StyleMap {
+        if (json == null) {
+            return emptyMap()
+        }
+        val root = JSONObject(json)
+        return SECTIONS_WHITELIST.mapNotNull { section ->
+            if (root.has(section)) {
+                val props = root.getJSONObject(section)
+                val attributes = props.keys().asSequence()
+                    .map { key ->
+                        val value = props.get(key)
+                        val formatted = when (value) {
+                            is Number, is Boolean -> value.toString()
+                            else -> "\"$value\""
+                        }
+                        "$key=$formatted"
+                    }
+                    .joinToString(", ")
+                section to attributes
+            } else {
+                null
+            }
+        }.toMap()
+    }
+
+    companion object {
+        val SECTIONS_WHITELIST = listOf("container", "module", "link", "directLink", "targetModule")
+
+        private val SECTIONS_RELATIONSHIPS = mapOf(
+            "container" to "graph",
+            "module" to "node",
+            "link" to "edge"
+        )
     }
 }

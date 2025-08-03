@@ -5,15 +5,16 @@ import io.github.esneiderfjaimes.modgraph.core.providers.GraphvizBuilder
 import io.github.esneiderfjaimes.modgraph.core.providers.MermaidBuilder
 
 class GraphGenerator(val provider: ProjectProvider) {
-    fun generate(moduleName: String, graphProvider: GraphProvider): String {
+    fun generate(moduleName: String, graphProvider: GraphProvider, style: String?): String {
+        val shemaBuilder = when (graphProvider) {
+            GraphProvider.MERMAID -> MermaidBuilder()
+            GraphProvider.GRAPHVIZ -> GraphvizBuilder()
+        }
         val module = provider.getModuleByPath(moduleName)
         val paths = mutableListOf(module.path)
         paths += getAllDependenciesPaths(module)
-        val map = transformPathsToDirectories(paths)
-        return when (graphProvider) {
-            GraphProvider.MERMAID -> MermaidBuilder().create(module, map)
-            GraphProvider.GRAPHVIZ -> GraphvizBuilder().create(module, map)
-        }
+        val node = transformPathsToNodes(module.path, paths)
+        return shemaBuilder.create(module, node, style)
     }
 
     private fun getAllDependenciesPaths(module: Module): List<String> {
@@ -25,26 +26,43 @@ class GraphGenerator(val provider: ProjectProvider) {
         return allDeps
     }
 
-    private fun transformPathsToDirectories(paths: Collection<String>): Map<String, Any> {
-        val tree = mutableMapOf<String, Any>()
+    private fun transformPathsToNodes(targetModulePath: String, paths: Collection<String>): Node {
+        val root = Node()
         paths.forEach { path ->
             val parts = path.split(":")
-            var current = tree
+            var current = root
             parts.forEachIndexed { index, part ->
-                if (part.isEmpty()) {
-                    return@forEachIndexed
-                }
+                if (part.isEmpty()) return@forEachIndexed
 
-                if (index == parts.size - 1) {
-                    current[part] = path
+                val isLast = index == parts.size - 1
+
+                // Busca si ya existe un nodo hijo para 'part'
+                val child = current.children[part]
+
+                if (isLast) {
+                    val isTargetModule = targetModulePath == path
+                    // Último: módulo, crea o actualiza
+                    if (child == null) {
+                        current.children[part] = Node(path = path, isTarget = isTargetModule)
+                    } else {
+                        // Si existe y es directorio, deja children y actualiza path
+                        current.children[part] = child.copy(path = path, isTarget = isTargetModule)
+                    }
                 } else {
-                    @Suppress("UNCHECKED_CAST")
-                    current = current.getOrPut(part) {
-                        mutableMapOf<String, Any>()
-                    } as MutableMap<String, Any>
+                    // Intermedio: directorio
+                    if (child == null) {
+                        val newNode = Node()
+                        current.children[part] = newNode
+                        current = newNode
+                    } else {
+                        // Si existe, sigue descendiendo
+                        current = child
+                    }
                 }
             }
         }
-        return tree
+
+        return root
     }
+
 }
