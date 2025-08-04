@@ -7,25 +7,23 @@ import java.io.File
 
 interface GraphGeneratorFile {
 
-    fun toFile(
+    fun write(
+        file: File,
         content: String,
-        outputDir: File,
         project: Project,
         graphExportFile: GraphExportFile,
-    ): File
+    )
 
 }
 
 object GraphGeneratorFileImpl : GraphGeneratorFile {
 
-    override fun toFile(
+    override fun write(
+        file: File,
         content: String,
-        outputDir: File,
         project: Project,
         graphExportFile: GraphExportFile,
-    ): File {
-        val path = project.path.normalizeId()
-        val file = File(outputDir, "${path}.${graphExportFile.extension}")
+    ) {
         when (graphExportFile) {
             GraphExportFile.MERMAID -> {
                 file.writeText(buildString {
@@ -44,8 +42,13 @@ object GraphGeneratorFileImpl : GraphGeneratorFile {
                     .render(Format.SVG)
                     .toFile(file)
             }
+
+            GraphExportFile.PNG_GRAPHVIZ -> {
+                Graphviz.fromString(content)
+                    .render(Format.PNG)
+                    .toFile(file)
+            }
         }
-        return file
     }
 
 }

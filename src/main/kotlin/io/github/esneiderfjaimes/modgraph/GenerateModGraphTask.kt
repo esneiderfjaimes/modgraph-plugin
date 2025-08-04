@@ -5,6 +5,7 @@ import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
 import io.github.esneiderfjaimes.modgraph.core.GraphGeneratorFile
 import io.github.esneiderfjaimes.modgraph.core.GraphGeneratorFileImpl
 import io.github.esneiderfjaimes.modgraph.core.Module
+import io.github.esneiderfjaimes.modgraph.core.normalizeFile
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
@@ -29,6 +30,14 @@ abstract class GenerateModGraphTask @Inject constructor(
     @get:Input
     abstract val outputDirPath: Property<String>
 
+    @get:Option(option = "prefix", description = "Prefix output file name")
+    @get:Input
+    abstract val outputFilePrefix: Property<String>
+
+    @get:Option(option = "type", description = "Output file type")
+    @get:Input
+    abstract val outputFileType: Property<String>
+
     @get:Option(option = "module", description = "Optional module name")
     @get:Input
     @get:Optional
@@ -48,6 +57,20 @@ abstract class GenerateModGraphTask @Inject constructor(
             extension.outputDirPath.orNull
             // default
                 ?: File(project.rootProject.projectDir, "docs/graphs").absolutePath
+        )
+
+        outputFilePrefix.convention(
+            // provided by extension
+            extension.outputFilePrefix.orNull
+            // default
+                ?: "dep_graph_"
+        )
+
+        outputFileType.convention(
+            // provided by extension
+            extension.outputFileType.orNull
+            // default
+                ?: "svg"
         )
 
         extension.stylePath.orNull?.let {
@@ -74,11 +97,19 @@ abstract class GenerateModGraphTask @Inject constructor(
 
     private val resolvedGraphExportFile: GraphExportFile
         get() {
-            /*
-                val graphTypeName = provider.get()
-                val graphProvider = GraphProvider.fromString(graphTypeName)
-            */
-            return GraphExportFile.SVG_GRAPHVIZ
+            val string = outputFileType.get()
+            return when (string.lowercase()) {
+                "svg", "svg_graphviz" -> GraphExportFile.SVG_GRAPHVIZ
+                "png", "png_graphviz" -> GraphExportFile.PNG_GRAPHVIZ
+                "mermaid" -> GraphExportFile.MERMAID
+                "graphviz" -> GraphExportFile.GRAPHVIZ
+                else -> throw GradleException("Invalid output file type: $string")
+            }
+        }
+
+    private val resolvedPrefix: String
+        get() {
+            return outputFilePrefix.get()
         }
 
     @TaskAction
@@ -133,10 +164,22 @@ abstract class GenerateModGraphTask @Inject constructor(
                 style = style
             )
 
+            // resolve output file
+            val file = File(
+                outputDir,
+                buildString {
+                    val path = project.path.normalizeFile()
+                    append(resolvedPrefix)
+                    append(path)
+                    append(".")
+                    append(graphExportFile.extension)
+                }
+            )
+
             // export to file
-            val file = graphGeneratorFile.toFile(
+            graphGeneratorFile.write(
+                file = file,
                 content = content,
-                outputDir = outputDir,
                 project = project,
                 graphExportFile = graphExportFile,
             )

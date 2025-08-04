@@ -8,6 +8,12 @@ fun String.normalizeId(): String {
         .replace("-", "___")
 }
 
+fun String.normalizeFile(): String {
+    return removePrefix(":")
+        .replace("_", "__")
+        .replace(":", "_")
+}
+
 fun StringBuilder.appendId(string: String) {
     append("\"")
     append(string)
