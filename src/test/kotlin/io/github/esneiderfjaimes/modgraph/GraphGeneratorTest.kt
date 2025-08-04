@@ -1,6 +1,6 @@
 package io.github.esneiderfjaimes.modgraph
 
-import io.github.esneiderfjaimes.modgraph.GenerateModGraphTask.GraphProvider
+import io.github.esneiderfjaimes.modgraph.core.Engine
 import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
 import io.github.esneiderfjaimes.modgraph.core.Module
 import io.github.esneiderfjaimes.modgraph.core.ProjectProvider
@@ -116,14 +116,14 @@ linkStyle 0,1,2 stroke:#ff0000
     @Test
     fun `should content syntax graphviz`() {
         val create = GraphGenerator(projectProvider)
-            .generate(":app", GraphProvider.GRAPHVIZ, styleGRAPHVIZ)
+            .generate(":app", Engine.GRAPHVIZ, styleGRAPHVIZ)
         assertEquals(rawGRAPHVIZ, create)
     }
 
     @Test
     fun `should content syntax mermaid`() {
         val create = GraphGenerator(projectProvider)
-            .generate(":app", GraphProvider.MERMAID, styleMERMAID)
+            .generate(":app", Engine.MERMAID, styleMERMAID)
         assertEquals(rawMERMAID, create)
     }
 }

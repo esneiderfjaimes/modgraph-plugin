@@ -1,14 +1,13 @@
 package io.github.esneiderfjaimes.modgraph.core
 
-import io.github.esneiderfjaimes.modgraph.GenerateModGraphTask.GraphProvider
 import io.github.esneiderfjaimes.modgraph.core.providers.GraphvizBuilder
 import io.github.esneiderfjaimes.modgraph.core.providers.MermaidBuilder
 
 class GraphGenerator(val provider: ProjectProvider) {
-    fun generate(moduleName: String, graphProvider: GraphProvider, style: String?): String {
-        val shemaBuilder = when (graphProvider) {
-            GraphProvider.MERMAID -> MermaidBuilder()
-            GraphProvider.GRAPHVIZ -> GraphvizBuilder()
+    fun generate(moduleName: String, engine: Engine, style: String?): String {
+        val shemaBuilder = when (engine) {
+            Engine.MERMAID -> MermaidBuilder()
+            Engine.GRAPHVIZ -> GraphvizBuilder()
         }
         val module = provider.getModuleByPath(moduleName)
         val paths = mutableListOf(module.path)
@@ -64,5 +63,4 @@ class GraphGenerator(val provider: ProjectProvider) {
 
         return root
     }
-
 }

@@ -21,9 +21,9 @@ class ModGraphPluginTest {
 
         // Crea settings.gradle.kts con dos módulos
         File(testProjectDir, "settings.gradle.kts").writeText(
-            """
-        rootProject.name = "test-project"
-        include(":app", ":core")
+        """
+rootProject.name = "test-project"
+include(":app", ":core")
         """.trimIndent()
         )
 
@@ -57,12 +57,12 @@ class ModGraphPluginTest {
 
         // build.gradle.kts del root (con el plugin aplicado)
         File(testProjectDir, "build.gradle.kts").writeText(
-            """
+        """
 plugins {
     id("io.github.esneiderfjaimes.modgraph")
 }
 modGraph {
-   stylePath = "$normalizedPath"
+  // stylePath = "$normalizedPath"
 }
         """.trimIndent()
         )
@@ -70,25 +70,24 @@ modGraph {
         // build.gradle.kts de :core (módulo sin dependencias)
         File(testProjectDir, "core").mkdir()
         File(testProjectDir, "core/build.gradle.kts").writeText(
-            """
-    plugins {
-        `java-library`
-    }
-
-        """.trimIndent()
+"""
+plugins {
+    `java-library`
+}
+""".trimIndent()
         )
 
         // build.gradle.kts de :app (depende de :core)
         File(testProjectDir, "app").mkdir()
         File(testProjectDir, "app/build.gradle.kts").writeText(
-            """
-    plugins {
-        `java-library`
-    }
+    """
+plugins {
+    `java-library`
+}
 
-    dependencies {
-        implementation(project(":core"))
-    }
+dependencies {
+    implementation(project(":core"))
+}
     """.trimIndent()
         )
 
