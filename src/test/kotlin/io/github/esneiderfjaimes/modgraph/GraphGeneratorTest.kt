@@ -9,8 +9,6 @@ import kotlin.test.assertEquals
 
 class GraphGeneratorTest {
 
-    val moduleCoreCore = Module(":core:core:uwu", listOf())
-    val moduleCore = Module(":test", listOf(moduleCoreCore))
     val moduleModel = Module(":core:model", listOf())
     val moduleDatabase = Module(":core:database", listOf())
     val moduleApi = Module(":core:api", listOf(moduleModel))
@@ -51,24 +49,33 @@ digraph {
 	":core:data" -> {":core:api" ":core:database" ":core:model"}
 	":core:api" -> {":core:model"}
 }""".trimIndent()
-
     val rawMERMAID = """
 %%{ init: { 'flowchart': { 'curve': 'basis' } } }%%
 graph TD
-	app_id(:app)
+	classDef Module color:#0D47A1,fill:#BBDEFB,stroke:#0D47A1
+	classDef TargetModule stroke:#ff0000
 
-	subgraph core
-		core__data_id(:core:data)
-		core__model_id(:core:model)
-		core__api_id(:core:api)
-		core__database_id(:core:database)
+	app_id@{shape: rounded, label: ":app"}
+	app_id:::TargetModule
+
+	subgraph core["core"]
+		core__data_id@{shape: rounded, label: ":core:data"}
+		core__data_id:::Module
+		core__model_id@{shape: rounded, label: ":core:model"}
+		core__model_id:::Module
+		core__api_id@{shape: rounded, label: ":core:api"}
+		core__api_id:::Module
+		core__database_id@{shape: rounded, label: ":core:database"}
+		core__database_id:::Module
 	end
 
 app_id --> core__data_id & core__model_id & core__api_id
 core__data_id --> core__api_id & core__database_id & core__model_id
 core__api_id --> core__model_id
+
+linkStyle 0,1,2 stroke:#ff0000
 """.trimIndent()
-    val style = """
+    val styleGRAPHVIZ = """
 {
     "module": {
         "fontname": "Helvetica,Arial,sans-serif",
@@ -87,19 +94,36 @@ core__api_id --> core__model_id
       "color": "red"
     }
 }
-    """.trimIndent()
+""".trimIndent()
+    val styleMERMAID = """
+{
+    "module": {
+        "shape": "rounded",
+        "fill":"#BBDEFB",
+        "stroke":"#0D47A1",
+        "color":"#0D47A1"
+    },
+    "targetModule": {
+        "shape": "rounded",
+        "stroke": "#ff0000"
+    },
+    "directLink": {
+      "stroke": "#ff0000"
+    }
+}
+""".trimIndent()
 
     @Test
     fun `should content syntax graphviz`() {
         val create = GraphGenerator(projectProvider)
-            .generate(":app", GraphProvider.GRAPHVIZ, style)
+            .generate(":app", GraphProvider.GRAPHVIZ, styleGRAPHVIZ)
         assertEquals(rawGRAPHVIZ, create)
     }
 
     @Test
     fun `should content syntax mermaid`() {
         val create = GraphGenerator(projectProvider)
-            .generate(":app", GraphProvider.MERMAID, null)
+            .generate(":app", GraphProvider.MERMAID, styleMERMAID)
         assertEquals(rawMERMAID, create)
     }
 }

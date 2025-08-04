@@ -2,7 +2,9 @@ package io.github.esneiderfjaimes.modgraph.core.providers
 
 import io.github.esneiderfjaimes.modgraph.core.Module
 import io.github.esneiderfjaimes.modgraph.core.Node
+import io.github.esneiderfjaimes.modgraph.core.StyleMap
 import io.github.esneiderfjaimes.modgraph.core.normalizeId
+import org.json.JSONObject
 
 class MermaidBuilder : SchemaBuilder {
 
@@ -13,85 +15,152 @@ class MermaidBuilder : SchemaBuilder {
 graph TD
     """.trimIndent()
         )
-       // graph(directory)
+        val moduleStyle = styleToMap(style)
+
+
+        moduleStyle["module"]?.let {
+            append("\n\tclassDef Module ")
+            append(it)
+        }
+        moduleStyle["targetModule"]?.let {
+            append("\n\tclassDef TargetModule ")
+            append(it)
+        }
         append("\n")
-        links(module)
-        // links(module.path, module.dependencies)
+
+        graph(node, moduleStyle = moduleStyle)
+        append("\n")
+
+        val count = links(module)
+        linksStyle(module, moduleStyle, count)
     }
 
-    private fun StringBuilder.graph(any: Any, key: String = "", level: Int = 0) {
-        when (any) {
-            is String -> {
-                append("\n")
-                append("\t".repeat(level))
-                append(any.normalizeId())
-                append("_id")
-                append("(")
-                append(any)
-                append(")")
-            }
-
-            is Map<*, *> -> {
-                if (key.isNotEmpty()) {
-                    append("\n")
-                    append("\n")
-                    append("\t".repeat(level))
-                    append("subgraph $key")
-                }
-                @Suppress("UNCHECKED_CAST")
-                val map = any as Map<String, Any>
-                map.forEach { (key, value) ->
-                    graph(value, key, level + 1)
-                }
-                if (key.isNotEmpty()) {
-                    append("\n")
-                    append("\t".repeat(level))
-                    append("end")
-                }
-            }
-        }
-    }
-
-    private fun StringBuilder.links(
-        path: String,
-        modules: List<Module>,
-        visited: MutableSet<String> = mutableSetOf()
-    ) {
-        if (visited.contains(path)) {
-            return
-        }
-        visited.add(path)
-        modules.forEach { module ->
+    private fun StringBuilder.linksStyle(module: Module, moduleStyle: StyleMap, count: Int) {
+        if (count > 0) {
             append("\n")
-            append("\t")
+            val directModules = module.dependencies.size
+            if (directModules > 1) {
+                moduleStyle["directLink"]?.let { attributes ->
+                    append("\nlinkStyle ")
+                    // ids
+                    0.until(directModules).joinToString(",").let { ids -> append(ids) }
+                    append(" ")
+                    append(attributes)
+                }
 
-            // module id 1
+                val otherModules = count - directModules
+                if (otherModules > 0) {
+                    moduleStyle["link"]?.let { attributes ->
+                        append("\nlinkStyle ")
+                        // ids
+                        (directModules).until(count).joinToString(",").let { ids -> append(ids) }
+                        append(" ")
+                        append(attributes)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun StringBuilder.graph(
+        node: Node,
+        moduleStyle: StyleMap,
+        prevRoot: String = "",
+        key: String = "",
+        level: Int = 0
+    ) {
+        val containerStyle = moduleStyle["container"]
+
+        val hasChildren = node.children.isNotEmpty()
+        if (hasChildren && key.isNotEmpty()) {
+            append("\n")
+            append("\n")
+            append("\t".repeat(level))
+            append("subgraph ")
+            append((prevRoot + key).normalizeId())
+            append("[\"")
+            append(key)
+            append("\"]")
+
+            containerStyle?.let {
+                append("\n")
+                append("\t".repeat(level + 1))
+                append("style ")
+                append(key.normalizeId())
+                append(" ")
+                append(it)
+                append("\n")
+            }
+        }
+        node.path?.let { path ->
+            val level = if (hasChildren) level + 1 else level
+            append("\n")
+            append("\t".repeat(level))
             append(path.normalizeId())
             append("_id")
+            append("@{")
+            if (!node.isTarget) {
+                moduleStyle["module_shape"]?.let { shape ->
+                    append("shape: $shape, ")
+                }
+            } else {
+                moduleStyle["targetModule_shape"]?.let { shape ->
+                    append("shape: $shape, ")
+                }
+            }
+            append("label: \"")
+            append(path)
+            append("\"")
+            append("}")
 
-            // arrow
-            append(" --> ")
+            // style
+            if (!node.isTarget) {
+                append("\n")
+                append("\t".repeat(level))
+                append(path.normalizeId())
+                append("_id")
+                append(":::")
+                append("Module")
+            } else {
+                append("\n")
+                append("\t".repeat(level))
+                append(path.normalizeId())
+                append("_id")
+                append(":::")
+                append("TargetModule")
+            }
+        }
 
-            // module id 2
-            append(module.path.normalizeId())
-            append("_id")
+        node.children.forEach { (subKey, value) ->
+            graph(
+                node = value,
+                moduleStyle = moduleStyle,
+                prevRoot = prevRoot + key,
+                key = subKey,
+                level = level + 1
+            )
+        }
 
-            links(module.path, module.dependencies, visited)
+        if (hasChildren && key.isNotEmpty()) {
+            append("\n")
+            append("\t".repeat(level))
+            append("end")
         }
     }
 
     private fun StringBuilder.links(
         module: Module,
         visited: MutableSet<String> = mutableSetOf()
-    ) {
+    ): Int {
+        var count = 0
         if (visited.contains(module.path)) {
-            return
+            return 0
         }
         visited.add(module.path)
 
         if (module.dependencies.isEmpty()) {
             // skip modules with no dependencies
-            return
+            return 0
         }
 
         append("\n")
@@ -106,8 +175,58 @@ graph TD
         val dependencies = module.dependencies.joinToString(" & ") { it.path.normalizeId() + "_id" }
         append(dependencies)
 
+        count += module.dependencies.size
+
         module.dependencies.forEach { submodule ->
-            links(submodule, visited)
+            count += links(submodule, visited)
         }
+
+        return count
+    }
+
+    fun styleToMap(json: String?): StyleMap {
+        if (json == null) {
+            return emptyMap()
+        }
+        val map = mutableMapOf<String, String>()
+        val root = JSONObject(json)
+
+        fun especialAttribute(
+            jsonKey: String,
+            specialKey: String?,
+        ) {
+            if (!root.has(jsonKey)) return
+            val props = root.getJSONObject(jsonKey)
+            val keys = props.keys().asSequence().toMutableSet()
+            if (keys.isEmpty()) {
+                return
+            }
+
+            specialKey?.let {
+                if (props.has(specialKey)) {
+                    val shape = props.getString(specialKey)
+                    map.put("${jsonKey}_$specialKey", shape)
+                    props.remove(specialKey)
+                    keys.remove(specialKey)
+                }
+            }
+
+            val attributes = keys.joinToString(",") { key ->
+                val value = props.get(key)
+                val formatted = when (value) {
+                    else -> value.toString()
+                }
+                "$key:$formatted"
+            }
+            map.put(jsonKey, attributes)
+        }
+
+        especialAttribute("container", null)
+        especialAttribute("module", "shape")
+        especialAttribute("targetModule", "shape")
+        especialAttribute("link", "arrow")
+        especialAttribute("directLink", "arrow")
+
+        return map
     }
 }
