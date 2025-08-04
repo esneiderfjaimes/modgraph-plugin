@@ -3,13 +3,12 @@ package io.github.esneiderfjaimes.modgraph.core
 import io.github.esneiderfjaimes.modgraph.core.providers.GraphvizBuilder
 import io.github.esneiderfjaimes.modgraph.core.providers.MermaidBuilder
 
-class GraphGenerator(val provider: ProjectProvider) {
-    fun generate(moduleName: String, engine: Engine, style: String?): String {
+class GraphGenerator {
+    fun generate(module: Module, engine: Engine, style: String?): String {
         val shemaBuilder = when (engine) {
             Engine.MERMAID -> MermaidBuilder()
             Engine.GRAPHVIZ -> GraphvizBuilder()
         }
-        val module = provider.getModuleByPath(moduleName)
         val paths = mutableListOf(module.path)
         paths += getAllDependenciesPaths(module)
         val node = transformPathsToNodes(module.path, paths)

@@ -3,7 +3,6 @@ package io.github.esneiderfjaimes.modgraph
 import io.github.esneiderfjaimes.modgraph.core.Engine
 import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
 import io.github.esneiderfjaimes.modgraph.core.Module
-import io.github.esneiderfjaimes.modgraph.core.ProjectProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -14,19 +13,6 @@ class GraphGeneratorTest {
     val moduleApi = Module(":core:api", listOf(moduleModel))
     val moduleData = Module(":core:data", listOf(moduleApi, moduleDatabase, moduleModel))
     val moduleApp = Module(":app", listOf(moduleData, moduleModel, moduleApi))
-
-    val projectProvider = object : ProjectProvider {
-        override fun getModuleByPath(path: String): Module {
-            return when (path) {
-                ":core:database" -> moduleDatabase
-                ":core:api" -> moduleApi
-                ":core:model" -> moduleModel
-                ":core:data" -> moduleData
-                ":app" -> moduleApp
-                else -> throw IllegalArgumentException("Unknown path: $path")
-            }
-        }
-    }
 
     val rawGRAPHVIZ = """
 digraph {
@@ -115,15 +101,15 @@ linkStyle 0,1,2 stroke:#ff0000
 
     @Test
     fun `should content syntax graphviz`() {
-        val create = GraphGenerator(projectProvider)
-            .generate(":app", Engine.GRAPHVIZ, styleGRAPHVIZ)
+        val create = GraphGenerator()
+            .generate(moduleApp, Engine.GRAPHVIZ, styleGRAPHVIZ)
         assertEquals(rawGRAPHVIZ, create)
     }
 
     @Test
     fun `should content syntax mermaid`() {
-        val create = GraphGenerator(projectProvider)
-            .generate(":app", Engine.MERMAID, styleMERMAID)
+        val create = GraphGenerator()
+            .generate(moduleApp, Engine.MERMAID, styleMERMAID)
         assertEquals(rawMERMAID, create)
     }
 }

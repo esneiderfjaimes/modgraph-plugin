@@ -1,11 +1,10 @@
 package io.github.esneiderfjaimes.modgraph
 
+import io.github.esneiderfjaimes.modgraph.core.GraphExportFile
 import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
 import io.github.esneiderfjaimes.modgraph.core.GraphGeneratorFile
 import io.github.esneiderfjaimes.modgraph.core.GraphGeneratorFileImpl
-import io.github.esneiderfjaimes.modgraph.core.GraphExportFile
 import io.github.esneiderfjaimes.modgraph.core.Module
-import io.github.esneiderfjaimes.modgraph.core.ProjectProvider
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
@@ -24,7 +23,7 @@ import javax.inject.Inject
 abstract class GenerateModGraphTask @Inject constructor(
     private val execOps: ExecOperations,
     objects: ObjectFactory
-) : DefaultTask(), ProjectProvider {
+) : DefaultTask() {
 
     @get:Option(option = "output", description = "Output directory")
     @get:Input
@@ -69,7 +68,7 @@ abstract class GenerateModGraphTask @Inject constructor(
             return outputDir
         }
 
-    private val graphGenerator = GraphGenerator(this)
+    private val graphGenerator = GraphGenerator()
 
     private val graphGeneratorFile: GraphGeneratorFile = GraphGeneratorFileImpl
 
@@ -125,12 +124,11 @@ abstract class GenerateModGraphTask @Inject constructor(
             val outputDir: File = resolvedOutputDir
             val graphExportFile: GraphExportFile = resolvedGraphExportFile
             val style = readStyleFile()
-
-            // tree(subproject, { project.rootProject.subprojectByPath(it) })
+            val module = moduleByPath(project.path)
 
             // generate content
             val content = graphGenerator.generate(
-                moduleName = project.path,
+                module = module,
                 engine = graphExportFile.engine,
                 style = style
             )
@@ -148,10 +146,6 @@ abstract class GenerateModGraphTask @Inject constructor(
         } catch (e: Exception) {
             logger.error("[modgraph] module ${project.path} export failed.", e)
         }
-    }
-
-    override fun getModuleByPath(path: String): Module {
-        return moduleByPath(path)
     }
 
     private val _subprojectDir = mutableMapOf<String, Project>()
