@@ -61,11 +61,16 @@ You can optionally specify parameters:
 
 ### 2. Configuration via Extension
 
-Instead of passing CLI arguments, you can configure the plugin using the `modGraph` extension in your root `build.gradle.kts`:
+Instead of passing CLI arguments, you can configure the plugin using the `modGraph` extension in
+your root `build.gradle.kts`:
 
 ```kotlin
 modGraph {
     outputDirPath.set("${rootDir}/custom/output")
+    prefix.set("dep_graph_")
+    type.set("svg")
+    module.set(":app")
+    style.set("${rootDir}/modgraph/style.json")
 }
 ```
 
@@ -81,9 +86,13 @@ modGraph {
 
 ## 🔧 Task Options
 
-| Option     | Type   | Required | Description                                |
-|------------|--------|----------|--------------------------------------------|
-| `--output` | String | ❌        | Output directory (default: `docs/graphs/`) |
+| Option     | Type   | Required | Description                                     |
+|------------|--------|----------|-------------------------------------------------|
+| `--output` | String | ❌        | Output directory (default: `docs/graphs/`)      |
+| `--prefix` | String | ❌        | Prefix for output files (default: `dep_graph_`) |
+| `--type`   | String | ❌        | Output file type (default: `svg`)               |
+| `--module` | String | ❌        | Target module path                              |
+| `--style`  | String | ❌        | Style file path                                 |
 
 ---
 
@@ -91,13 +100,15 @@ modGraph {
 
 * Only project-to-project dependencies are shown (e.g., `implementation(project(":core"))`).
 * If the output directory doesn't exist, it will be created automatically.
-* You can define options either via CLI flags or the extension (`modGraph`), with extension values taking precedence.
+* You can define options either via CLI flags or the extension (`modGraph`), with extension values
+  taking precedence.
 
 ---
 
 ## 🙌 Credits
 
-SVG generation is powered by the excellent [Graphviz Java library by nidi3](https://github.com/nidi3/graphviz-java).
+SVG generation is powered by the
+excellent [Graphviz Java library by nidi3](https://github.com/nidi3/graphviz-java).
 
 ---
 

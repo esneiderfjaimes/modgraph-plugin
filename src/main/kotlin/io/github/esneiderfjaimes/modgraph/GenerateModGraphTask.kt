@@ -1,11 +1,11 @@
 package io.github.esneiderfjaimes.modgraph
 
-import guru.nidi.graphviz.engine.Format
-import guru.nidi.graphviz.engine.Graphviz
+import io.github.esneiderfjaimes.modgraph.core.GraphExportFile
 import io.github.esneiderfjaimes.modgraph.core.GraphGenerator
+import io.github.esneiderfjaimes.modgraph.core.GraphGeneratorFile
+import io.github.esneiderfjaimes.modgraph.core.GraphGeneratorFileImpl
 import io.github.esneiderfjaimes.modgraph.core.Module
-import io.github.esneiderfjaimes.modgraph.core.ProjectProvider
-import io.github.esneiderfjaimes.modgraph.core.normalizeId
+import io.github.esneiderfjaimes.modgraph.core.normalizeFile
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Project
@@ -24,25 +24,58 @@ import javax.inject.Inject
 abstract class GenerateModGraphTask @Inject constructor(
     private val execOps: ExecOperations,
     objects: ObjectFactory
-) : DefaultTask(), ProjectProvider {
+) : DefaultTask() {
 
     @get:Option(option = "output", description = "Output directory")
     @get:Input
     abstract val outputDirPath: Property<String>
+
+    @get:Option(option = "prefix", description = "Prefix output file name")
+    @get:Input
+    abstract val outputFilePrefix: Property<String>
+
+    @get:Option(option = "type", description = "Output file type")
+    @get:Input
+    abstract val outputFileType: Property<String>
 
     @get:Option(option = "module", description = "Optional module name")
     @get:Input
     @get:Optional
     abstract val moduleName: Property<String>
 
+    @get:Option(option = "style", description = "Style file")
+    @get:Input
+    @get:Optional
+    abstract val stylePath: Property<String>
+
+    private val extension: ModGraphExtension
+        get() = project.extensions.getByType(ModGraphExtension::class.java)
+
     init {
-        val ext = project.extensions.findByType(ModGraphExtension::class.java)
         outputDirPath.convention(
             // provided by extension
-            ext?.outputDirPath?.orNull
+            extension.outputDirPath.orNull
             // default
                 ?: File(project.rootProject.projectDir, "docs/graphs").absolutePath
         )
+
+        outputFilePrefix.convention(
+            // provided by extension
+            extension.outputFilePrefix.orNull
+            // default
+                ?: "dep_graph_"
+        )
+
+        outputFileType.convention(
+            // provided by extension
+            extension.outputFileType.orNull
+            // default
+                ?: "svg"
+        )
+
+        extension.stylePath.orNull?.let {
+            stylePath.convention(it)
+        }
 
         moduleName.convention(null as String?)
     }
@@ -52,101 +85,36 @@ abstract class GenerateModGraphTask @Inject constructor(
         get() {
             val rawPath = outputDirPath.get()
             val file = File(rawPath)
-            return if (file.isAbsolute) file else File(project.rootProject.projectDir, rawPath)
+            val outputDir = if (file.isAbsolute) file
+            else File(project.rootProject.projectDir, rawPath)
+            outputDir.mkdirs()
+            return outputDir
         }
 
-    private val graphGenerator = GraphGenerator(this)
+    private val graphGenerator = GraphGenerator()
+
+    private val graphGeneratorFile: GraphGeneratorFile = GraphGeneratorFileImpl
+
+    private val resolvedGraphExportFile: GraphExportFile
+        get() {
+            val string = outputFileType.get()
+            return when (string.lowercase()) {
+                "svg", "svg_graphviz" -> GraphExportFile.SVG_GRAPHVIZ
+                "png", "png_graphviz" -> GraphExportFile.PNG_GRAPHVIZ
+                "mermaid" -> GraphExportFile.MERMAID
+                "graphviz" -> GraphExportFile.GRAPHVIZ
+                else -> throw GradleException("Invalid output file type: $string")
+            }
+        }
+
+    private val resolvedPrefix: String
+        get() {
+            return outputFilePrefix.get()
+        }
 
     @TaskAction
     fun generateSvgFiles() {
-        /*       val graphTypeName = provider.get()
-               val graphProvider = GraphProvider.fromString(graphTypeName)*/
-
-        generateNidiGraphs()
-
-        /*
-        generateGraphs(graphProvider)
-        val outputDirFile = outputDir.get().asFile
-        if (!outputDirFile.exists()) outputDirFile.mkdirs()
-
-        val inputDirFile = File(outputDirFile, "temp-${graphProvider.extension}")
-        inputDirFile.walkTopDown()
-            .filter { it.isFile && it.extension == graphProvider.extension }
-            .forEach { dotFile ->
-                val outputFile = File(outputDirFile, dotFile.nameWithoutExtension + ".svg")
-                // println("[OK] Generating: ${outputFile.name}")
-
-                execOps.exec {
-                    when (graphProvider) {
-                        GraphProvider.MERMAID -> TODO()
-                        GraphProvider.GRAPHVIZ -> {
-                            commandLine(
-                                "dot",
-                                "-Tsvg",
-                                dotFile.absolutePath,
-                                "-o",
-                                outputFile.absolutePath
-                            )
-                        }
-                    }
-
-                    println("[OK] Graph generated: ${outputFile.absolutePath}")
-                }
-            }
-
-        if (inputDirFile.exists()) {
-            inputDirFile.deleteRecursively()
-        }
-        */
-    }
-
-    enum class GraphProvider(val extension: String) {
-        MERMAID("md"),
-        GRAPHVIZ("dot");
-
-        companion object {
-            fun fromString(value: String): GraphProvider {
-                return values().find { it.name.lowercase() == value.lowercase() }!!
-            }
-        }
-    }
-
-    fun generateGraphs(provider: GraphProvider) {
         try {
-            val outputDir: File =
-                project.rootProject.file("docs/graphs/temp-${provider.extension}")
-            if (outputDir.exists()) {
-                outputDir.deleteRecursively()
-            }
-            outputDir.mkdirs()
-
-            val files = mutableListOf<String>()
-            project.rootProject.subprojects.forEach { subproject ->
-                try {
-                    // tree(subproject, { project.rootProject.subprojectByPath(it) })
-
-                    val path = subproject.path.normalizeId()
-                    val content = graphGenerator.generate(subproject.path, provider)
-                    val outputDot = File(outputDir, "${path}.${provider.extension}")
-                    outputDot.writeText(content)
-
-                    files.add(path)
-
-                    // println("[OK] file written to ${outputDot.absolutePath}")
-                } catch (e: Exception) {
-                    println("[!] ${subproject.path} ${e.message}")
-                }
-            }
-        } catch (e: Exception) {
-            println("[!] ${e.message}")
-        }
-    }
-
-    fun generateNidiGraphs() {
-        try {
-            val outputDir: File = resolvedOutputDir
-            outputDir.mkdirs()
-
             val moduleName = moduleName.orNull
 
             // target module name is not provided
@@ -156,45 +124,71 @@ abstract class GenerateModGraphTask @Inject constructor(
                 }
 
                 val project = subprojectByPath(moduleName)
-                generateModuleDependencyGraph(project, outputDir)
+                generateModuleDependencyGraph(project)
             } else {
                 // Project is root project
                 if (project == project.rootProject) {
                     // generate all module dependency graph
                     project.rootProject.subprojects.forEach { subproject ->
-                        generateModuleDependencyGraph(subproject, outputDir)
+                        generateModuleDependencyGraph(subproject)
                     }
                     return
                 }
 
                 // Project is not root project
-                generateModuleDependencyGraph(project, outputDir)
+                generateModuleDependencyGraph(project)
             }
         } catch (e: Exception) {
             logger.error("[modgraph] export failed.", e)
         }
     }
 
-    private fun generateModuleDependencyGraph(project: Project, outputDir: File) {
+    private fun readStyleFile(): String? {
+        val file = File(stylePath.orNull ?: return null)
+        return file.readText()
+    }
+
+    private fun generateModuleDependencyGraph(
+        project: Project,
+    ) {
         try {
-            // tree(subproject, { project.rootProject.subprojectByPath(it) })
+            val outputDir: File = resolvedOutputDir
+            val graphExportFile: GraphExportFile = resolvedGraphExportFile
+            val style = readStyleFile()
+            val module = moduleByPath(project.path)
 
-            val path = project.path.normalizeId()
-            val content = graphGenerator.generate(project.path, GraphProvider.GRAPHVIZ)
+            // generate content
+            val content = graphGenerator.generate(
+                module = module,
+                engine = graphExportFile.engine,
+                style = style
+            )
 
-            val file = File(outputDir, "${path}.svg")
-            Graphviz.fromString(content)
-                .render(Format.SVG)
-                .toFile(file)
+            // resolve output file
+            val file = File(
+                outputDir,
+                buildString {
+                    val path = project.path.normalizeFile()
+                    append(resolvedPrefix)
+                    append(path)
+                    append(".")
+                    append(graphExportFile.extension)
+                }
+            )
 
-            logger.lifecycle("[modgraph] module $path exported to ${file.absolutePath}.")
+            // export to file
+            graphGeneratorFile.write(
+                file = file,
+                content = content,
+                project = project,
+                graphExportFile = graphExportFile,
+            )
+
+            val normalizedPath = file.absolutePath.replace(File.separatorChar, '/')
+            logger.lifecycle("[modgraph] module $path exported to file:///${normalizedPath}.")
         } catch (e: Exception) {
             logger.error("[modgraph] module ${project.path} export failed.", e)
         }
-    }
-
-    override fun getModuleByPath(path: String): Module {
-        return moduleByPath(path)
     }
 
     private val _subprojectDir = mutableMapOf<String, Project>()
